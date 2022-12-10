@@ -1,29 +1,26 @@
-﻿using GameConsole;
+﻿using BepInEx.Configuration;
+using BepInEx;
 using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using System.IO;
-using Unity;
+using UnityEngine.SceneManagement;
 
-namespace UltraRunTracker
+namespace UltraRunTracker 
 {
     [HarmonyPatch(typeof(FinalPit), "OnTriggerEnter")]
     public class MainGame
     {
-        readonly string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\runStats.csv";
+        string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\runStats.csv";
+
+        public ConfigFile Config = new ConfigFile(Path.Combine(Paths.ConfigPath, "UltraRunTracker" + ".cfg"), false);
+
+        public ConfigEntry<bool> SeperateLevels;
+
         private List<string> stats = new List<string>();
-        static string Runs;
-        public string LvlNumToString(int levelnum)
-        {  // yandaredev tier code but it looks better on the spreadsheet
-            if (levelnum <= 5) { return ("0_" + levelnum); }
-            else if (levelnum <= 9) { return ("1_" + (levelnum - 5)); }
-            else if (levelnum <= 13) { return ("2_" + (levelnum - 9)); }
-            else if (levelnum <= 15) { return ("3_") + (levelnum - 13); }
-            else if (levelnum <= 19) { return ("4_" + (levelnum - 15)); }
-            else if (levelnum <= 23) { return ("5_" + (levelnum - 23)); }
-            else if (levelnum <= 25) { return ("6_") + (levelnum - 25); }
-            else if (levelnum == 666) { return ("P_1"); }
-            else { return ("oops. something went wrong. the mod is probably not updated to support this level!"); }
-        }
+
+        static string Runs; // alternate variable name: MyNose.
+
         public string NoFormat(string str) {
             return str switch
             {
@@ -34,21 +31,63 @@ namespace UltraRunTracker
                 "<color=#FFD800>B</color>" => ("B"),
                 "<color=#4CFF00>C</color>" => ("C"),
                 "<color=#0094FF>D</color>" => ("D"),
-                _ => ("shit something went wrong"),
+                _ => (str),
             };
         }
-        public void resetBool() { hasrun = false; }
+
+        static bool hasrun = false;
+
+        public void WriteToFile(string path) {
+            AddStats();
+            try
+            {
+                if (!hasrun)
+                {
+                    Runs = File.ReadAllText(path);
+                    hasrun = true;
+                }
+                File.WriteAllText(path, Runs);
+
+                for (int i = 0; i < stats.Count; i++)
+                {
+                    File.AppendAllText(path, stats[i]);
+
+                    if (i != stats.Count - 1)
+                    {
+                        File.AppendAllText(path, ",");
+                    }
+                    else
+                    {
+                        File.AppendAllText(path, "\n");
+                    }
+                }
+            }
+            catch (Exception) {
+
+                HudMessageReceiver.Instance.SendHudMessage("you have this level's <color=#ff0000ff>FILE</color> open, this run will <color=#ff0000ff>not</color> save."); // thanks Pitr
+            }
+        }
+
+        public void resetBool() 
+        { 
+            hasrun = false; 
+        }
+
         private void AddStats()
-        {
-            
-           stats.Add(NoFormat(StatsManager.Instance.fr.totalRank.text));
+        {          
+            stats.Add(NoFormat(StatsManager.Instance.fr.totalRank.text));
             stats.Add(NoFormat(StatsManager.Instance.fr.timeRank.text));
             stats.Add(NoFormat(StatsManager.Instance.fr.killsRank.text));
-            stats.Add(NoFormat(StatsManager.Instance.fr.styleRank.text)); 
-
-            stats.Add(LvlNumToString(StatsManager.Instance.levelNumber));
-
-            stats.Add(ChallengeManager.Instance.challengeDone.ToString());
+            stats.Add(NoFormat(StatsManager.Instance.fr.styleRank.text));
+            
+            stats.Add(SceneManager.GetActiveScene().name);
+            if (ChallengeManager.Instance.challengeDone && !ChallengeManager.Instance.challengeFailed)
+            {
+                stats.Add(true.ToString()); //why true.ToString() instead of just "TRUE"? because for some reason it automatically translates it to diffrent languages when you open it in excel which is cool
+            }
+            else {  
+                stats.Add(false.ToString());
+            }              
             stats.Add(StatsManager.Instance.tookDamage.ToString());
             stats.Add(StatsManager.Instance.kills.ToString());
             stats.Add(StatsManager.Instance.seconds.ToString());
@@ -59,23 +98,31 @@ namespace UltraRunTracker
             stats.Add(CheatsController.Instance.cheatsEnabled.ToString());
             stats.Add(AssistController.Instance.majorEnabled.ToString());
         }
-        public void WriteToFile() {
-            for (int i = 0; i < stats.Count; i++)
-            {
-                File.AppendAllText(dir, stats[i]);
-                if (i != stats.Count - 1) { File.AppendAllText(dir, ","); }
-                else { File.AppendAllText(dir, "\n"); }
-            }
-        }
-        static bool hasrun = false;
-        
+
+
         static void Postfix()
-        {           
+        {  
             MainGame game = new MainGame();
-            if (!hasrun) { Runs = File.ReadAllText(game.dir); hasrun = true; }
-            game.AddStats();                    
-            File.WriteAllText(game.dir, Runs);
-            game.WriteToFile();
+            
+            game.SeperateLevels = game.Config.Bind("General", "SeperateLevels", false, "whether  or not to seperate each level into it's own file. ");
+
+            if (game.SeperateLevels.Value)
+            {
+                string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\" + SceneManager.GetActiveScene().name + @".csv";
+
+                if (!File.Exists(dir)) // i haven no clue how to use StreamWriter or StreamReader, please bully me relentelsly for it and then teach me to use it if this is a bad way of doing this.
+                {
+                     File.AppendAllText(dir, "FinalRank,TimeRank,KillRank,StyleRank,Level,Challange,TookDamage,Kills,Seconds,Stylepoints,Restarts,Difficulty,Cheats,MajorAssists\n");
+                }
+
+                 game.WriteToFile(dir);
+
+            }
+
+            else
+            {               
+                game.WriteToFile(game.dir);
+            }                     
         }
-    }
+    } 
 }
