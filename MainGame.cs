@@ -1,9 +1,10 @@
-﻿using BepInEx.Configuration;
 using BepInEx;
+using BepInEx.Configuration;
 using HarmonyLib;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEngine;
 using UnityEngine.SceneManagement;
 
 namespace UltraRunTracker 
@@ -11,16 +12,12 @@ namespace UltraRunTracker
     [HarmonyPatch(typeof(FinalPit), "OnTriggerEnter")]
     public class MainGame
     {
-        string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\runStats.csv";
 
-        public ConfigFile Config = new ConfigFile(Path.Combine(Paths.ConfigPath, "UltraRunTracker" + ".cfg"), false);
-
-        public ConfigEntry<bool> SeperateLevels;
+        string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\";
 
         private List<string> stats = new List<string>();
 
         static string Runs; // alternate variable name: MyNose.
-
         public string NoFormat(string str) {
             return str switch
             {
@@ -46,7 +43,7 @@ namespace UltraRunTracker
                     Runs = File.ReadAllText(path);
                     hasrun = true;
                 }
-                File.WriteAllText(path, Runs);
+                File.WriteAllText(path, Runs);     
 
                 for (int i = 0; i < stats.Count; i++)
                 {
@@ -62,9 +59,9 @@ namespace UltraRunTracker
                     }
                 }
             }
-            catch (Exception) {
-
-                HudMessageReceiver.Instance.SendHudMessage("you have this level's <color=#ff0000ff>FILE</color> open, this run will <color=#ff0000ff>not</color> save."); // thanks Pitr
+            catch (Exception exception) {
+                Console.WriteLine(exception);
+                HudMessageReceiver.Instance.SendHudMessage("something went wrong, mostly likely\nyou have this level's <color=#ff0000ff>FILE</color> open, this run will <color=#ff0000ff>not</color> save."); // thanks Pitr
             }
         }
 
@@ -83,7 +80,7 @@ namespace UltraRunTracker
             stats.Add(SceneManager.GetActiveScene().name);
             if (ChallengeManager.Instance.challengeDone && !ChallengeManager.Instance.challengeFailed)
             {
-                stats.Add(true.ToString()); //why true.ToString() instead of just "TRUE"? because for some reason it automatically translates it to diffrent languages when you open it in excel which is cool
+                stats.Add(true.ToString());
             }
             else {  
                 stats.Add(false.ToString());
@@ -99,30 +96,44 @@ namespace UltraRunTracker
             stats.Add(AssistController.Instance.majorEnabled.ToString());
         }
 
-
+        //this method being static has cause me so many fucking problems
         static void Postfix()
         {  
-            MainGame game = new MainGame();
             
-            game.SeperateLevels = game.Config.Bind("General", "SeperateLevels", false, "whether  or not to seperate each level into it's own file. ");
+            MainGame game = new MainGame();
 
-            if (game.SeperateLevels.Value)
+            CyberGame cg = new CyberGame();
+
+            string dir = game.dir;
+            string session = CyberGame.session; 
+
+            // why the fuck do i have to do this twice??  
+            ConfigEntry<bool> SeperateLevels = cg.Config.Bind("Toggles", "SeperateLevels", false, "whether  or not to seperate each level into it's own file. ");
+
+            ConfigEntry<bool>  seperateSessions = cg.Config.Bind("Toggles", "SeperateSessions", false, "whether  or not to seperate each Session (every time you launch the game) into it's own file. ");
+
+            if (!seperateSessions.Value && !SeperateLevels.Value)
             {
-                string dir = Directory.GetCurrentDirectory() + @"\BepInEx\UMM Mods\UltraRunTracker\" + SceneManager.GetActiveScene().name + @".csv";
-
-                if (!File.Exists(dir)) // i haven no clue how to use StreamWriter or StreamReader, please bully me relentelsly for it and then teach me to use it if this is a bad way of doing this.
-                {
-                     File.AppendAllText(dir, "FinalRank,TimeRank,KillRank,StyleRank,Level,Challange,TookDamage,Kills,Seconds,Stylepoints,Restarts,Difficulty,Cheats,MajorAssists\n");
-                }
-
-                 game.WriteToFile(dir);
-
+                dir += "runstats";
             }
 
-            else
-            {               
-                game.WriteToFile(game.dir);
-            }                     
+            if (SeperateLevels.Value) {
+                dir += SceneManager.GetActiveScene().name; 
+            }
+
+            if (seperateSessions.Value
+                ) { // trying to get the session to work properly is hell why does it keep bieng nothing 
+                dir += " - " + session;
+            }   
+            
+            dir += ".csv";
+
+            if (!File.Exists(dir)) {
+                File.AppendAllText(dir, "FinalRank,TimeRank,KillRank,StyleRank,Level,Challange,TookDamage,Kills,Seconds,Stylepoints,Restarts,Difficulty,Cheats,MajorAssists\n");
+            } 
+
+            game.WriteToFile(dir);        
         }
     } 
 }
+    
