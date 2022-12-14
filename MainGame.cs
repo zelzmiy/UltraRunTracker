@@ -112,7 +112,7 @@ namespace UltraRunTracker
 
             ConfigEntry<bool>  seperateSessions = cg.Config.Bind("Toggles", "SeperateSessions", false, "whether  or not to seperate each Session (every time you launch the game) into it's own file. ");
 
-            if (!seperateSessions.Value && !SeperateLevels.Value)
+            if (!SeperateLevels.Value)
             {
                 dir += "runstats";
             }
